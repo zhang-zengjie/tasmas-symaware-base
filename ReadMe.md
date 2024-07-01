@@ -101,15 +101,6 @@ git clone git@github.com:zhang-zengjie/tasmas.git
 - Watch the terminal for runtime information;
 - The pybullet simulation environment will prompt up automatically.
 
-### Fine-Tuning the Code
-
-Feel free to try out the code with different parameter settings in the `configs/params.py` file.
-
-- Change the coordinates of the regions in this file to construct a different map;
-- Change the standard deviation variable `Sigma` for different noise levels;
-- Change the initial position of the robot in `x0`;
-- Customize the lists of runtime specifications `specs` and their instants in `times` for various tasks.
-
 ## License
 
 This project is with a BSD-3 license, refer to `LICENSE` for details.
