@@ -1,27 +1,21 @@
 import numpy as np
 import os, sys
-import numpy as np
 from itertools import product
+import gurobipy as gp
 from gurobipy import GRB
 import logging
 from typing import TypeVar
-import gurobipy as gp
-
 import time
 T = TypeVar('T')
 
-
-# from knowledge import TasMasAgentModel
 root_path = os.getcwd()
-sys.path.append(os.path.join(root_path, 'symawarebase', 'src'))
-sys.path.append(os.path.join(root_path, 'tasmasbase'))
-# sys.path.append(root_path + '/tasmasbase')
+sys.path.append(os.path.join(root_path, 'eicsymaware', 'src'))
 
-from commons.functions import PRT, calculate_probabilities, calculate_risks, checkout_largest_in_dict
-from probstlpy.systems.linear import LinearSystem
-from probstlpy.solvers.gurobi.gurobi_micp import GurobiMICPSolver as MICPSolver
-from param import get_assigner
-from param import get_phi_0
+from tasmas.utils.functions import PRT, calculate_probabilities, calculate_risks, checkout_largest_in_dict
+from tasmas.probstlpy.systems.linear import LinearSystem
+from tasmas.probstlpy.solvers.gurobi.gurobi_micp import GurobiMICPSolver as MICPSolver
+from tasmas.config import agent_model, agent_specs
+
 from symaware.base import (
     Agent,
     DefaultPerceptionSystem,
@@ -54,9 +48,12 @@ except ImportError as e:
     ) from e
 
 
-class TasMasSpecs(KnowledgeDatabase):
+class TasMasKnowledge(KnowledgeDatabase):
     simulation_horizon: float
-    specs: tuple
+    tlg: list
+    tll: list
+    slg: list
+    sll: list
 
 
 class TasMasCoordinator(AgentCoordinator[T]):
@@ -81,9 +78,10 @@ class TasMasCoordinator(AgentCoordinator[T]):
     def initialise_specs(self, knowledge):
 
         self.horizon = knowledge['simulation_horizon']
-        global_specs, local_specs = knowledge['specs']
-        self.tlg, self.slg = global_specs                       # LG: the list of global specifications (slg) and its time list (tlg) 
-        self.tll, self.sll = local_specs                       # LG: the list of local specifications (sll) and its time list (tlg)
+        self.tlg = knowledge['tlg']
+        self.tll = knowledge['tll']
+        self.slg = knowledge['slg']                       # LG: the list of global specifications (slg) and its time list (tlg) 
+        self.sll = knowledge['sll']                     # LG: the list of local specifications (sll) and its time list (tlg)
 
 
     @log(__LOGGER)
@@ -276,7 +274,16 @@ class TasMasCoordinator(AgentCoordinator[T]):
             self._env.stop()
             if self._post_stop is not None:
                 self._post_stop(self)
-        
+
+
+class TasMasAgentModel(KnowledgeDatabase):
+    A: np.ndarray
+    B: np.ndarray
+    C: np.ndarray
+    D: np.ndarray
+    mu: np.ndarray
+    Sigma: np.ndarray
+
 
 class TasMasAgent(Agent[T]):
 
@@ -319,15 +326,6 @@ class TasMasAgent(Agent[T]):
 
         controller = self.controllers[0]
         controller._compute(t, controller.probe_task(t))
-
-
-class TasMasAgentModel(KnowledgeDatabase):
-    A: np.ndarray
-    B: np.ndarray
-    C: np.ndarray
-    D: np.ndarray
-    mu: np.ndarray
-    Sigma: np.ndarray
 
 
 class TasMasController(Controller):
@@ -523,6 +521,9 @@ def main():
 
     initialize_logger(LOG_LEVEL)
 
+    model = agent_model(2)
+    specs = agent_specs(2, CONTROL_HORIZON)
+
     ###########################################################
     # 1. Create the environment and add the obstacles         #
     ###########################################################
@@ -533,10 +534,13 @@ def main():
     ###########################################################
     # For each agent in the simulation...                     #
     ###########################################################
-    agent_coordinator = TasMasCoordinator[KnowledgeDatabase](env, agents)
-    specs_knowledge = TasMasSpecs(
+    agent_coordinator = TasMasCoordinator[TasMasKnowledge](env, agents)
+    specs_knowledge = TasMasKnowledge(
         simulation_horizon = CONTROL_HORIZON,
-        specs = get_assigner(CONTROL_HORIZON, 2)
+        tlg = specs.tlg,
+        tll = specs.tll,
+        slg = specs.slg,
+        sll = specs.sll,
     )
 
     agent_coordinator.initialise_specs(specs_knowledge)
@@ -549,23 +553,23 @@ def main():
         ###########################################################
         # 3. Create the agent and assign it an entity             #
         ###########################################################
-        agent = TasMasAgent[KnowledgeDatabase](i, agent_entity)
+        agent = TasMasAgent[TasMasAgentModel](i, agent_entity)
 
         ###########################################################
         # 6. Initialise the agent with some starting information  #
         ###########################################################
         awareness_vector = AwarenessVector(agent.id, np.zeros(7))
-        agent_model = TasMasAgentModel(
-            A = np.eye(2),
-            B = np.eye(2),
-            C = np.eye(2),
-            D = np.zeros((2, 2)),
+        agent_knowledge = TasMasAgentModel(
+            A = model.A,
+            B = model.B,
+            C = model.C,
+            D = model.D,
 
             # Disturbance variables
-            mu = np.zeros((2, )),
-            Sigma = 0.01 * np.eye(2)
+            mu = model.mu,
+            Sigma = model.Sigma
         )
-        agent.initialise_agent(awareness_vector, {agent.id: agent_model})
+        agent.initialise_agent({agent.id: awareness_vector}, {agent.id: agent_knowledge})
 
         ###########################################################
         # 4. Add the agent to the environment                     #
@@ -581,11 +585,11 @@ def main():
         agent_controller = TasMasController(
                 i,
                 sys_model = agent._knowledge_database,
-                spec = get_phi_0(2, CONTROL_HORIZON), 
+                spec = specs.safety, 
                 N = CONTROL_HORIZON, 
                 x0 = np.array(np.array(initial_states[i])), 
-                Q = np.eye(2) * 0.001,
-                R = np.eye(2) * 0.001,
+                Q = model.Q,
+                R = model.R,
                 ub = control_bounds[i], 
                 async_loop_lock = TimeIntervalAsyncLoopLock(TIME_INTERVAL)
             )

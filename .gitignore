@@ -1,0 +1,9 @@
+*.npy
+*.log
+*.png
+*/.DS_store
+*/.idea
+*/__init__.py
+__pycache__/*
+eicsymaware/*
+tasmas/*
