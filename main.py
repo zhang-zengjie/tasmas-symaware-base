@@ -8,8 +8,8 @@ from typing import TypeVar
 import time
 T = TypeVar('T')
 
-#root_path = os.getcwd()
-#sys.path.append(os.path.join(root_path, 'eicsymaware', 'src'))
+root_path = os.getcwd()
+sys.path.append(os.path.join(root_path, 'eicsymaware', 'src'))
 
 from tasmas.utils.functions import PRT, calculate_probabilities, calculate_risks, checkout_largest_in_dict
 from tasmas.probstlpy.systems.linear import LinearSystem
