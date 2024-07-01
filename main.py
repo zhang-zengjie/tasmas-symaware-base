@@ -56,6 +56,15 @@ class TasMasKnowledge(KnowledgeDatabase):
     sll: list
 
 
+class TasMasAgentModel(KnowledgeDatabase):
+    A: np.ndarray
+    B: np.ndarray
+    C: np.ndarray
+    D: np.ndarray
+    mu: np.ndarray
+    Sigma: np.ndarray
+
+
 class TasMasCoordinator(AgentCoordinator[T]):
 
     __LOGGER = get_logger(__name__, "TasMasController")
@@ -63,7 +72,6 @@ class TasMasCoordinator(AgentCoordinator[T]):
     def __init__(self, env):
         super().__init__(env)
 
-        self.t = 0
         self.specs = None
         self.m = None
         self.m_range = None
@@ -155,40 +163,35 @@ class TasMasCoordinator(AgentCoordinator[T]):
             logging.info("Assignment not feasible. Rejecting the new tasks!")
 
     @log(__LOGGER)
-    def bidding(self, t):
+    def bidding(self):
         for agent in self._agents:
             for j in self.m_range:
-                self.price_list[agent._ID][j] = agent.controllers[0].bid(t, self.specs[j]) if self.bidding_list[agent._ID][j] else 1
+                self.price_list[agent._ID][j] = agent.controllers[0].bid(self.specs[j]) if self.bidding_list[agent._ID][j] else 1
                 logging.info("Agent " + str(agent._ID) + " has probed task " + self.specs[j].name + "!")
 
     @log(__LOGGER)
-    def assign(self, t):
+    def assign(self):
         for id, item in self.assignment_list.items():
             if 1 in item:
-                self._agents[id].controllers[0].accept_task(t, self.specs[item.index(1)])
+                self._agents[id].controllers[0].accept_task(self.specs[item.index(1)])
 
     @log(__LOGGER)
-    def update_control(self, t):
-        for agent in self._agents:
-            agent.controllers[0].apply_control(t, agent.probe_task(t))
-
-    @log(__LOGGER)
-    def assign_global(self, t, specs_list):
+    def assign_global(self, specs_list):
         self.update_specs(specs_list)
         self.select_agents()
-        self.bidding(t)
+        self.bidding()
         self.auction()
-        self.assign(t)
+        self.assign()
 
     @log(__LOGGER)
-    def assign_local(self, t, specs_list):
+    def assign_local(self, specs_list):
 
         for id, spec in specs_list.items():
-            sln = self._agents[id].controllers[0].probe_task(t, spec)
+            sln = self._agents[id].controllers[0].probe_task(spec)
             if sln[-1] != GRB.OPTIMAL:
-                self._agents[id].controllers[0].reject_task(t, spec)
+                self._agents[id].controllers[0].reject_task(spec)
             else:
-                self._agents[id].controllers[0].accept_task(t, spec)
+                self._agents[id].controllers[0].accept_task(spec)
 
     @log(__LOGGER)
     def run(self, time_step: float, timeout: float = -1, initialise_info: "InitialisationInfo | None" = None):
@@ -226,7 +229,7 @@ class TasMasCoordinator(AgentCoordinator[T]):
         """""""""""""""""
 
         self.initialize_agents()
-        self.t = 0
+        sim_step = 0
         
         for agent in self._agents:
             self._env.initialise()
@@ -248,20 +251,22 @@ class TasMasCoordinator(AgentCoordinator[T]):
                 """""""""""""""
 
                 self._env.step()
-                if self.t < self.horizon:
+                if sim_step < self.horizon:
 
-                    if self.t in self.tlg:
-                        self.assign_global(self.t, self.slg[self.tlg.index(self.t)])
-                    if self.t in self.tll:
-                        self.assign_local(self.t, self.sll[self.tll.index(self.t)])
+                    if sim_step in self.tlg:
+                        self.assign_global(self.slg[self.tlg.index(sim_step)])
+                    if sim_step in self.tll:
+                        self.assign_local(self.sll[self.tll.index(sim_step)])
 
                     
                     for agent in self._agents:
-                        agent.step(self.t)
+                        for controller in agent.controllers:
+                            controller.set_time(sim_step)
+                        agent.step()
 
-                    self.t += 1
+                    sim_step += 1
 
-                else:
+                elif sim_step == self.horizon:
                     print('Maximal horizon reached ... standing by ...')
 
                 time.sleep(time_step)
@@ -277,77 +282,6 @@ class TasMasCoordinator(AgentCoordinator[T]):
                 self._post_stop(self)
 
 
-class TasMasAgentModel(KnowledgeDatabase):
-    A: np.ndarray
-    B: np.ndarray
-    C: np.ndarray
-    D: np.ndarray
-    mu: np.ndarray
-    Sigma: np.ndarray
-
-
-class TasMasAgent(Agent[T]):
-
-    __LOGGER = get_logger(__name__, "TasMasController")
-    '''
-    @log(__LOGGER)
-    def initialise_agent(
-        self,
-        initial_awareness_database,
-        initial_knowledge_database
-    ):
-        if isinstance(initial_awareness_database, AwarenessVector):
-            initial_awareness_database = {self._ID: initial_awareness_database}
-
-        if not self._ID in initial_awareness_database.keys():
-            raise ValueError(
-                "The agent ID must be present in the initial awareness database. "
-                "This database also includes the state of the agent itself"
-            )
-        if self._ID not in initial_knowledge_database.keys():
-            raise ValueError("The agent ID must be present in the initial knowledge database.")
-
-        self._awareness_database = initial_awareness_database
-        self._knowledge_database = initial_knowledge_database
-        # Initialise all components
-        for component in self.components:
-            component.initialise_component(
-                agent=self,
-                initial_awareness_database=initial_awareness_database,
-                initial_knowledge_database=initial_knowledge_database,
-            )
-
-        self._is_initialised = True
-    '''
-    @log(__LOGGER)
-    def step(self, t):
-        # Your implementation here
-        # Example:
-        # Compute all the components in the order they were added
-
-        if not self.is_initialised:
-            raise ValueError("The agent must be initialised before running the step function.")
-        perception_systems = self.perception_systems
-        communication_receivers = self.communication_receivers
-        risk_estimators = self.risk_estimators
-        uncertainty_estimators = self.uncertainty_estimators
-        controllers = self.controllers
-        communication_senders = self.communication_senders
-        for perception_system in perception_systems:
-            perception_system.compute_and_update()
-        for communication_receiver in communication_receivers:
-            communication_receiver.compute_and_update()
-        for risk_estimator in risk_estimators:
-            risk_estimator.compute_and_update()
-        for uncertainty_estimator in uncertainty_estimators:
-            uncertainty_estimator.compute_and_update()
-        for controller in controllers:
-            controller.compute_and_update(t)
-        for communication_sender in communication_senders:
-            communication_sender.compute_and_update()
-
-
-
 class TasMasController(Controller):
     """
     The tasmas controller by TU/e
@@ -358,6 +292,7 @@ class TasMasController(Controller):
     def __init__(self, agent_id, spec, N, x0, Q, R, ub, async_loop_lock=None):
         super().__init__(agent_id, async_loop_lock)
 
+        self.time = 0
         self.N = N              # Time-horizon
         self.psi = spec
         self.x0 = x0
@@ -398,6 +333,9 @@ class TasMasController(Controller):
         self.risk = None
         self.x = None
         
+    @log(__LOGGER)
+    def set_time(self, time):
+        self.time = time
 
     @log(__LOGGER)
     def construct_solver(self):
@@ -419,37 +357,37 @@ class TasMasController(Controller):
         self.diag_sigma_inf, self.K = PRT(self.sys, self.Q, self.R)
 
     @log(__LOGGER)
-    def update_measurement(self, t):
-        self.zz[:, t] = self.xx[:, t]
+    def update_measurement(self):
+        self.zz[:, self.time + 1] = self.xx[:, self.time + 1]
         return None
 
     @log(__LOGGER)
-    def update_probabilities(self, t):
+    def update_probabilities(self):
 
         spec_prob = calculate_probabilities(self.accept_phi, self.risk)
 
         for i in range(len(self.accept_phi)):
-            self.accept_prob[i][t] = spec_prob[i]
+            self.accept_prob[i][self.time] = spec_prob[i]
         return None
     
     @log(__LOGGER)
-    def update_memory(self, t):
+    def update_memory(self):
 
         # Update Memory
         self.zh += [self.z]
-        if t == 0:
+        if self.time == 0:
             self.err[:, 1] = self.w[:, 0]
         else:
-            self.err[:, t + 1] = (self.sys.A - self.sys.B @ self.K) @ self.err[:, t] + self.w[:, t]
-        self.xx[:, t + 1] = self.z[:, t + 1] + self.err[:, t + 1]
-        self.vv[:, t] = self.v[:, t]
+            self.err[:, self.time + 1] = (self.sys.A - self.sys.B @ self.K) @ self.err[:, self.time] + self.w[:, self.time]
+        self.xx[:, self.time + 1] = self.z[:, self.time + 1] + self.err[:, self.time + 1]
+        self.vv[:, self.time] = self.v[:, self.time]
 
         return None
 
     @log(__LOGGER)
-    def probe_task(self, t, spec=None):
+    def probe_task(self, spec=None):
 
-        self.solver.mark = t
+        self.solver.mark = self.time
         self.solver.riskH = self.risk
 
         if spec is not None:
@@ -475,26 +413,25 @@ class TasMasController(Controller):
         return (z, v, risk, flag)           
 
     @log(__LOGGER)
-    def accept_task(self, t, spec):
+    def accept_task(self, spec):
 
         self.psi = self.psi & spec
         self.accept_phi += [spec]
         self.accept_prob += [np.ones((self.N, ))]
-        self.accept_time += [t]
+        self.accept_time += [self.time]
         self.solver.AddSTLConstraints(spec)
         self.solver.AddNewSTLProbConstraint(spec)
 
-        logging.info("Agent " + str(self.agent_id) + " has accepted the new task " + spec.name + " at step " + str(t) + "!")
+        logging.info("Agent " + str(self.agent_id) + " has accepted the new task " + spec.name + " at step " + str(self.time) + "!")
 
     @log(__LOGGER)
-    def reject_task(self, t, spec):
+    def reject_task(self, spec):
         
-        logging.info("Agent " + str(self.agent_id) + " has rejected the new task " + spec.name + " at step " + str(t) + "!")
+        logging.info("Agent " + str(self.agent_id) + " has rejected the new task " + spec.name + " at step " + str(self.time) + "!")
 
     @log(__LOGGER)
-    def _compute(self, t, solution):
-    # def apply_control(self, t, solution):
-        
+    def _compute(self, solution):
+
         #solver.AddControlBounds(self.u_limits[:, 0], self.u_limits[:, 1])
         #solver.AddQuadraticInputCost(self.R)
         zNew, vNew, riskNew, flag = solution
@@ -502,32 +439,32 @@ class TasMasController(Controller):
         # Check whether a solution has been found!
         if flag != GRB.OPTIMAL:
 
-            self.zz[:, t] = self.z[:, t]
-            logging.info("Agent " + str(self.agent_id) + " has rejected the new measurement at step " + str(t) + "!")
+            self.zz[:, self.time] = self.z[:, self.time]
+            logging.info("Agent " + str(self.agent_id) + " has rejected the new measurement at step " + str(self.time) + "!")
 
         else:
             # Update control strategy
             self.z = zNew
             self.v = vNew
             self.risk = riskNew
-            self.err[:, t] = 0
-            self.accept_meas += [t]
+            self.err[:, self.time] = 0
+            self.accept_meas += [self.time]
             
-            logging.info("Agent " + str(self.agent_id) + " has accepted the new measurement at step " + str(t) + "!")
+            logging.info("Agent " + str(self.agent_id) + " has accepted the new measurement at step " + str(self.time) + "!")
         
-        self.update_memory(t)
-        self.update_probabilities(t)
-        self.update_measurement(t+1)
+        self.update_memory()
+        self.update_probabilities()
+        self.update_measurement()
 
     @log(__LOGGER)
-    def compute_and_update(self, t):
-        solution = self.probe_task(t)
-        self._compute(t, solution)
+    def compute_and_update(self):
+        solution = self.probe_task()
+        self._compute(solution)
 
 
     @log(__LOGGER)
-    def bid(self, t, spec):
-        _, _, risk, flag = self.probe_task(t, spec)
+    def bid(self, spec):
+        _, _, risk, flag = self.probe_task(spec)
         if flag != GRB.OPTIMAL:
             price = 1
         else:
@@ -585,7 +522,7 @@ def main():
         ###########################################################
         # 3. Create the agent and assign it an entity             #
         ###########################################################
-        agent = TasMasAgent[TasMasAgentModel](i, agent_entity)
+        agent = Agent[TasMasAgentModel](i, agent_entity)
 
         ###########################################################
         # 4. Add the agent to the environment                     #
