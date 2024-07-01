@@ -1,0 +1,8 @@
+sphinx>=3.2.1
+sphinx_rtd_theme
+sphinx_autodoc_typehints
+sphinx-pyproject
+sphinxcontrib-mermaid
+m2r2
+setuptools
+requests
