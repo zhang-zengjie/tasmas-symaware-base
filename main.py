@@ -8,8 +8,8 @@ from typing import TypeVar
 import time
 T = TypeVar('T')
 
-root_path = os.getcwd()
-sys.path.append(os.path.join(root_path, 'eicsymaware', 'src'))
+#root_path = os.getcwd()
+#sys.path.append(os.path.join(root_path, 'eicsymaware', 'src'))
 
 from tasmas.utils.functions import PRT, calculate_probabilities, calculate_risks, checkout_largest_in_dict
 from tasmas.probstlpy.systems.linear import LinearSystem
@@ -60,8 +60,8 @@ class TasMasCoordinator(AgentCoordinator[T]):
 
     __LOGGER = get_logger(__name__, "TasMasController")
 
-    def __init__(self, env, agents):
-        super().__init__(env, agents)
+    def __init__(self, env):
+        super().__init__(env)
 
         self.t = 0
         self.specs = None
@@ -89,7 +89,6 @@ class TasMasCoordinator(AgentCoordinator[T]):
 
         self.n = len(self._agents)
         for agent in self._agents:
-            assert(len(agent.controllers) == 1)
             agent.controllers[0].x = self.model.addMVar((self.n, ), vtype=GRB.BINARY, name="assignment")
 
     @log(__LOGGER)
@@ -247,6 +246,8 @@ class TasMasCoordinator(AgentCoordinator[T]):
                 """""""""""""""
                 Iteration
                 """""""""""""""
+
+                self._env.step()
                 if self.t < self.horizon:
 
                     if self.t in self.tlg:
@@ -254,7 +255,7 @@ class TasMasCoordinator(AgentCoordinator[T]):
                     if self.t in self.tll:
                         self.assign_local(self.t, self.sll[self.tll.index(self.t)])
 
-                    self._env.step()
+                    
                     for agent in self._agents:
                         agent.step(self.t)
 
@@ -288,7 +289,7 @@ class TasMasAgentModel(KnowledgeDatabase):
 class TasMasAgent(Agent[T]):
 
     __LOGGER = get_logger(__name__, "TasMasController")
-
+    '''
     @log(__LOGGER)
     def initialise_agent(
         self,
@@ -317,15 +318,34 @@ class TasMasAgent(Agent[T]):
             )
 
         self._is_initialised = True
-
+    '''
     @log(__LOGGER)
     def step(self, t):
         # Your implementation here
         # Example:
         # Compute all the components in the order they were added
 
-        controller = self.controllers[0]
-        controller._compute(t, controller.probe_task(t))
+        if not self.is_initialised:
+            raise ValueError("The agent must be initialised before running the step function.")
+        perception_systems = self.perception_systems
+        communication_receivers = self.communication_receivers
+        risk_estimators = self.risk_estimators
+        uncertainty_estimators = self.uncertainty_estimators
+        controllers = self.controllers
+        communication_senders = self.communication_senders
+        for perception_system in perception_systems:
+            perception_system.compute_and_update()
+        for communication_receiver in communication_receivers:
+            communication_receiver.compute_and_update()
+        for risk_estimator in risk_estimators:
+            risk_estimator.compute_and_update()
+        for uncertainty_estimator in uncertainty_estimators:
+            uncertainty_estimator.compute_and_update()
+        for controller in controllers:
+            controller.compute_and_update(t)
+        for communication_sender in communication_senders:
+            communication_sender.compute_and_update()
+
 
 
 class TasMasController(Controller):
@@ -335,7 +355,7 @@ class TasMasController(Controller):
 
     __LOGGER = get_logger(__name__, "TasMasController")
 
-    def __init__(self, agent_id, sys_model, spec, N, x0, Q, R, ub, async_loop_lock=None):
+    def __init__(self, agent_id, spec, N, x0, Q, R, ub, async_loop_lock=None):
         super().__init__(agent_id, async_loop_lock)
 
         self.N = N              # Time-horizon
@@ -349,8 +369,8 @@ class TasMasController(Controller):
         self.R = R
 
         # Compute 1) relation between tube and probability & 2) Stabilizing feedback gain
-        self.construct_model(sys_model)
-        self.diag_sigma_inf, self.K = PRT(self.sys, self.Q, self.R)
+        
+        self.diag_sigma_inf, self.K = None, None
 
         # Initialize Memory
         self.xx = np.zeros([2, self.N + 1])
@@ -377,11 +397,13 @@ class TasMasController(Controller):
 
         self.risk = None
         self.x = None
+        
 
+    @log(__LOGGER)
+    def construct_solver(self):
         self.solver = MICPSolver(self.psi, self.sys, self.zz, self.N, self.diag_sigma_inf, uu=self.vv, riskH=self.risk, mark=0, verbose=False)
         self.solver.AddSTLConstraints(self.psi)
-        self.solver.AddControlBounds(self.u_limits[:, 0], self.u_limits[:, 1])
-        
+        self.solver.AddControlBounds(self.u_limits[:, 0], self.u_limits[:, 1])    
 
     @log(__LOGGER)
     def construct_model(self, sys_model):
@@ -394,6 +416,7 @@ class TasMasController(Controller):
 
         self.sys = LinearSystem(A, B, C, D, mu, Sigma)
         self.w = np.random.multivariate_normal(mu, Sigma, self.N).T
+        self.diag_sigma_inf, self.K = PRT(self.sys, self.Q, self.R)
 
     @log(__LOGGER)
     def update_measurement(self, t):
@@ -497,6 +520,12 @@ class TasMasController(Controller):
         self.update_measurement(t+1)
 
     @log(__LOGGER)
+    def compute_and_update(self, t):
+        solution = self.probe_task(t)
+        self._compute(t, solution)
+
+
+    @log(__LOGGER)
     def bid(self, t, spec):
         _, _, risk, flag = self.probe_task(t, spec)
         if flag != GRB.OPTIMAL:
@@ -514,9 +543,8 @@ def main():
     NUM_AGENTS = 4
     LOG_LEVEL = "INFO"
     CONTROL_HORIZON = 25
-    agents = []
 
-    initial_states = [[5, 5], [15, 5], [25, 5], [35, 5]]
+    initial_states = [[5, 5, 0], [15, 5, 0], [25, 5, 0], [35, 5, 0]]
     control_bounds = [4, 5, 6, 7]
 
     initialize_logger(LOG_LEVEL)
@@ -534,7 +562,7 @@ def main():
     ###########################################################
     # For each agent in the simulation...                     #
     ###########################################################
-    agent_coordinator = TasMasCoordinator[TasMasKnowledge](env, agents)
+    agent_coordinator = TasMasCoordinator[TasMasKnowledge](env)
     specs_knowledge = TasMasKnowledge(
         simulation_horizon = CONTROL_HORIZON,
         tlg = specs.tlg,
@@ -548,28 +576,16 @@ def main():
         ###########################################################
         # 2. Create the entity and model the agent will use       #
         ###########################################################
-        agent_entity = RacecarEntity(i, model=RacecarModel(i), position=np.array([0, i, 0.1]))
+        
+        agent_entity = RacecarEntity(i, model=RacecarModel(i), 
+                                     position=0.1*np.array(initial_states[i]),
+                                     orientation=p.getQuaternionFromEuler([0, 0, 3.14159 / 2])
+                                     )
 
         ###########################################################
         # 3. Create the agent and assign it an entity             #
         ###########################################################
         agent = TasMasAgent[TasMasAgentModel](i, agent_entity)
-
-        ###########################################################
-        # 6. Initialise the agent with some starting information  #
-        ###########################################################
-        awareness_vector = AwarenessVector(agent.id, np.zeros(7))
-        agent_knowledge = TasMasAgentModel(
-            A = model.A,
-            B = model.B,
-            C = model.C,
-            D = model.D,
-
-            # Disturbance variables
-            mu = model.mu,
-            Sigma = model.Sigma
-        )
-        agent.initialise_agent({agent.id: awareness_vector}, {agent.id: agent_knowledge})
 
         ###########################################################
         # 4. Add the agent to the environment                     #
@@ -582,22 +598,34 @@ def main():
         # In this example, wee need a controller and a perception system
         # They both run at the same frequency
 
-        agent_controller = TasMasController(
+        agent.add_components(
+            TasMasController(
                 i,
-                sys_model = agent._knowledge_database,
                 spec = specs.safety, 
                 N = CONTROL_HORIZON, 
-                x0 = np.array(np.array(initial_states[i])), 
+                x0 = np.array(np.array(initial_states[i][:2])), 
                 Q = model.Q,
                 R = model.R,
                 ub = control_bounds[i], 
                 async_loop_lock = TimeIntervalAsyncLoopLock(TIME_INTERVAL)
-            )
-
-        agent.add_components(
-            agent_controller,
+            ),
             DefaultPerceptionSystem(i, env, TimeIntervalAsyncLoopLock(TIME_INTERVAL))
         )
+
+        ###########################################################
+        # 6. Initialise the agent with some starting information  #
+        ###########################################################
+
+        awareness_vector = AwarenessVector(agent.id, np.zeros(7))
+        agent_knowledge = TasMasAgentModel(
+            A = model.A, B = model.B, C = model.C, D = model.D, mu = model.mu, Sigma = model.Sigma
+        )
+
+        agent.initialise_agent({agent.id: awareness_vector}, {agent.id: agent_knowledge})
+
+        for controller in agent.controllers:
+            controller.construct_model(agent._knowledge_database)
+            controller.construct_solver()
 
         ###########################################################
         # 7. Add the agent to the coordinator                     #
