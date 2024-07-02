@@ -5,13 +5,28 @@ import gurobipy as gp
 from gurobipy import GRB
 import logging
 from typing import TypeVar
-import time
+import time, math
+from scipy import interpolate as inter
+from scipy.spatial.transform import Rotation as R
+
 T = TypeVar('T')
+TIME_INTERVAL = 0.01
+DECISION_INTERVAL = 0.1
+NUM_AGENTS = 4
+LOG_LEVEL = "INFO"
+CONTROL_HORIZON = 25
+
+root_path = os.getcwd()
+sys.path.append(os.path.join(root_path, 'eicsymaware', 'src'))
 
 from tasmas.utils.functions import PRT, calculate_probabilities, calculate_risks, checkout_largest_in_dict
 from tasmas.probstlpy.systems.linear import LinearSystem
 from tasmas.probstlpy.solvers.gurobi.gurobi_micp import GurobiMICPSolver as MICPSolver
 from tasmas.config import agent_model, agent_specs
+
+import pure_pursuit as pp
+from pure_pursuit import State as Bicycle
+from pure_pursuit import TargetCourse
 
 from symaware.base import (
     Agent,
@@ -247,24 +262,25 @@ class TasMasCoordinator(AgentCoordinator[T]):
                 Iteration
                 """""""""""""""
 
-                self._env.step()
-                if sim_step < self.horizon:
+                if (sim_step < self.horizon):
 
                     if sim_step in self.tlg:
                         self.assign_global(self.slg[self.tlg.index(sim_step)])
                     if sim_step in self.tll:
                         self.assign_local(self.sll[self.tll.index(sim_step)])
 
-                    
                     for agent in self._agents:
                         for controller in agent.controllers:
                             controller.set_time(sim_step)
-                        agent.step()
+                            controller.apply_control()
 
-                    sim_step += 1
-
-                elif sim_step == self.horizon:
+                elif (sim_step == self.horizon):
                     print('Maximal horizon reached ... standing by ...')
+
+                self._env.step()
+                sim_step += 1
+                for agent in self._agents:
+                    agent.step()
 
                 time.sleep(time_step)
                 end_time = time.time()
@@ -426,9 +442,9 @@ class TasMasController(Controller):
         
         logging.info("Agent " + str(self.agent_id) + " has rejected the new task " + spec.name + " at step " + str(self.time) + "!")
 
-    @log(__LOGGER)
-    def _compute(self):
 
+    @log(__LOGGER)
+    def apply_control(self):
         #solver.AddControlBounds(self.u_limits[:, 0], self.u_limits[:, 1])
         #solver.AddQuadraticInputCost(self.R)
         zNew, vNew, riskNew, flag = self.probe_task()
@@ -452,7 +468,48 @@ class TasMasController(Controller):
         self.update_memory()
         self.update_probabilities()
         self.update_measurement()
-        return np.zeros(2), TimeSeries()
+
+    @log(__LOGGER)
+    def _compute(self):
+
+        awareness_database = self._agent.awareness_database
+        knowledge_database = self._agent.knowledge_database
+
+        position = awareness_database[self._agent_id].state[:2]
+        quaternion = awareness_database[self._agent_id].state[3:]
+        r = R.from_quat(quaternion)
+        angles = r.as_euler('xyz', degrees=False)
+        kinematics = Bicycle(x=position[0], y=position[1], yaw=angles[-1], v=0.0)
+
+        set_points = self.xx.T[:self.time + 2]
+        times = np.arange(0, self.time + 2)
+        time_series = TimeSeries({time: point for time, point in enumerate(set_points)})
+
+        cx = inter.interp1d(times, set_points.T[0], kind='linear')
+        cy = inter.interp1d(times, set_points.T[1], kind='linear')
+
+        ts = np.arange(0, self.time + 1, 0.1)
+
+        target_course = TargetCourse(cx(ts), cy(ts))
+        target_ind, _ = target_course.search_target_index(kinematics)
+
+        des_speed = 0
+        des_steering = 0
+
+        T = 10.0
+        time = 0.0
+        target_speed = 0.2
+
+        while (T >= time) & (len(ts) - 1 > target_ind):
+
+            des_acceleration = pp.proportional_control(target_speed, kinematics.v)
+            des_steering, target_ind = pp.pure_pursuit_steer_control(kinematics, target_course, target_ind)    
+            
+            kinematics.update(des_acceleration, des_steering)
+            time += 0.1
+            des_speed = kinematics.v
+
+        return np.array([des_speed, des_steering]), time_series
 
     @log(__LOGGER)
     def bid(self, spec):
@@ -468,12 +525,8 @@ def main():
     ###########################################################
     # 0. Parameters                                           #
     ###########################################################
-    TIME_INTERVAL = 0.01
-    NUM_AGENTS = 4
-    LOG_LEVEL = "INFO"
-    CONTROL_HORIZON = 25
 
-    initial_states = [[5, 5, 0.5], [15, 5, 0.5], [25, 5, 0.5], [35, 5, 0.5]]
+    initial_states = [[5, 5, 0.1], [15, 5, 0.1], [25, 5, 0.1], [35, 5, 0.1]]
     control_bounds = [4, 5, 6, 7]
 
     initialize_logger(LOG_LEVEL)
@@ -507,7 +560,7 @@ def main():
         ###########################################################
         
         agent_entity = RacecarEntity(i, model=RacecarModel(i), 
-                                     position=0.1*np.array(initial_states[i]),
+                                     position=np.array(initial_states[i]),
                                      orientation=p.getQuaternionFromEuler([0, 0, 3.14159 / 2])
                                      )
 
