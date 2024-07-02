@@ -8,9 +8,6 @@ from typing import TypeVar
 import time
 T = TypeVar('T')
 
-root_path = os.getcwd()
-sys.path.append(os.path.join(root_path, 'eicsymaware', 'src'))
-
 from tasmas.utils.functions import PRT, calculate_probabilities, calculate_risks, checkout_largest_in_dict
 from tasmas.probstlpy.systems.linear import LinearSystem
 from tasmas.probstlpy.solvers.gurobi.gurobi_micp import GurobiMICPSolver as MICPSolver
@@ -430,11 +427,11 @@ class TasMasController(Controller):
         logging.info("Agent " + str(self.agent_id) + " has rejected the new task " + spec.name + " at step " + str(self.time) + "!")
 
     @log(__LOGGER)
-    def _compute(self, solution):
+    def _compute(self):
 
         #solver.AddControlBounds(self.u_limits[:, 0], self.u_limits[:, 1])
         #solver.AddQuadraticInputCost(self.R)
-        zNew, vNew, riskNew, flag = solution
+        zNew, vNew, riskNew, flag = self.probe_task()
 
         # Check whether a solution has been found!
         if flag != GRB.OPTIMAL:
@@ -455,12 +452,7 @@ class TasMasController(Controller):
         self.update_memory()
         self.update_probabilities()
         self.update_measurement()
-
-    @log(__LOGGER)
-    def compute_and_update(self):
-        solution = self.probe_task()
-        self._compute(solution)
-
+        return np.zeros(2), TimeSeries()
 
     @log(__LOGGER)
     def bid(self, spec):
@@ -481,7 +473,7 @@ def main():
     LOG_LEVEL = "INFO"
     CONTROL_HORIZON = 25
 
-    initial_states = [[5, 5, 0], [15, 5, 0], [25, 5, 0], [35, 5, 0]]
+    initial_states = [[5, 5, 0.5], [15, 5, 0.5], [25, 5, 0.5], [35, 5, 0.5]]
     control_bounds = [4, 5, 6, 7]
 
     initialize_logger(LOG_LEVEL)
