@@ -509,7 +509,7 @@ class TasMasController(Controller):
             time += 0.1
             des_speed = kinematics.v
 
-        return np.array([des_speed, des_steering]), time_series
+        return np.array([des_speed*100, des_steering]), TimeSeries({0: set_points[-1]})
 
     @log(__LOGGER)
     def bid(self, spec):
