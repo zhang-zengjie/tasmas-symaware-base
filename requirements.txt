@@ -1,0 +1,9 @@
+gurobipy==11.0.2
+matplotlib==3.9.0
+numpy==1.26.4
+pybullet==3.2.6
+scipy==1.14.0
+treelib==1.7.0
+symaware-base==0.0.3
+symaware-pybullet==0.0.2
+control==0.10.0
