@@ -11,18 +11,19 @@ from scipy.spatial.transform import Rotation as R
 
 T = TypeVar('T')
 TIME_INTERVAL = 0.01
-DECISION_INTERVAL = 0.1
 NUM_AGENTS = 4
 LOG_LEVEL = "INFO"
 CONTROL_HORIZON = 25
 
 root_path = os.getcwd()
 sys.path.append(os.path.join(root_path, 'eicsymaware', 'src'))
+sys.path.append(os.path.join(root_path, 'tasmas', 'src'))
 
-from tasmas.utils.functions import PRT, calculate_probabilities, calculate_risks, checkout_largest_in_dict
-from tasmas.probstlpy.systems.linear import LinearSystem
-from tasmas.probstlpy.solvers.gurobi.gurobi_micp import GurobiMICPSolver as MICPSolver
-from tasmas.config import agent_model, agent_specs
+from utils.functions import PRT, calculate_probabilities, calculate_risks, checkout_largest_in_dict
+from utils.draw import draw
+from probstlpy.systems.linear import LinearSystem
+from probstlpy.solvers.gurobi.gurobi_micp import GurobiMICPSolver as MICPSolver
+from config import agent_model, agent_specs
 
 import pure_pursuit as pp
 from pure_pursuit import State as Bicycle
@@ -206,6 +207,15 @@ class TasMasCoordinator(AgentCoordinator[T]):
                 self._agents[id].controllers[0].accept_task(spec)
 
     @log(__LOGGER)
+    def record(self):
+
+        measures = {}
+        for id, agent in enumerate(self._agents):
+            measures[id] = agent.controllers[0].xx
+            
+        return measures
+
+    @log(__LOGGER)
     def run(self, time_step: float, timeout: float = -1, initialise_info: "InitialisationInfo | None" = None):
         """
         Start running all the agents and the environment.
@@ -275,7 +285,11 @@ class TasMasCoordinator(AgentCoordinator[T]):
                             controller.apply_control()
 
                 elif (sim_step == self.horizon):
-                    print('Maximal horizon reached ... standing by ...')
+
+                    print('Maximal horizon reached ... Drawing route map ...')
+                    measures = self.record()
+                    draw(measures)
+                    print('Maximal horizon reached ... Standing by ...')
 
                 self._env.step()
                 sim_step += 1
@@ -445,6 +459,7 @@ class TasMasController(Controller):
 
     @log(__LOGGER)
     def apply_control(self):
+
         #solver.AddControlBounds(self.u_limits[:, 0], self.u_limits[:, 1])
         #solver.AddQuadraticInputCost(self.R)
         zNew, vNew, riskNew, flag = self.probe_task()
@@ -509,7 +524,7 @@ class TasMasController(Controller):
             time += 0.1
             des_speed = kinematics.v
 
-        return np.array([des_speed*100, des_steering]), TimeSeries({0: set_points[-1]})
+        return np.array([des_speed, des_steering]), TimeSeries({0: set_points[-1]})
 
     @log(__LOGGER)
     def bid(self, spec):
@@ -618,7 +633,7 @@ def main():
     # 8. Run the simulation                                   #
     ###########################################################
     agent_coordinator.run(TIME_INTERVAL)
-
+    
 
 if __name__ == "__main__":
 
