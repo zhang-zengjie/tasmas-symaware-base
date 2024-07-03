@@ -5,7 +5,7 @@ import gurobipy as gp
 from gurobipy import GRB
 import logging
 from typing import TypeVar
-import time, math
+import time
 from scipy import interpolate as inter
 from scipy.spatial.transform import Rotation as R
 
@@ -21,9 +21,9 @@ sys.path.append(os.path.join(root_path, 'tasmas', 'src'))
 
 from utils.functions import PRT, calculate_probabilities, calculate_risks, checkout_largest_in_dict
 from utils.draw import draw
+from utils.config import agent_model, agent_specs
 from probstlpy.systems.linear import LinearSystem
 from probstlpy.solvers.gurobi.gurobi_micp import GurobiMICPSolver as MICPSolver
-from config import agent_model, agent_specs
 
 import pure_pursuit as pp
 from pure_pursuit import State as Bicycle
