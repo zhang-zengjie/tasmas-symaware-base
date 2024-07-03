@@ -97,7 +97,7 @@ git clone git@github.com:zhang-zengjie/tasmas.git
 
 ### Running Instructions
 
-- Run the main script `main.py`;
+- Run the main script `src/main.py`;
 - Watch the terminal for runtime information;
 - The pybullet simulation environment will prompt up automatically.
 
