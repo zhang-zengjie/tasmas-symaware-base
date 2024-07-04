@@ -1,5 +1,4 @@
 import numpy as np
-import os, sys
 from itertools import product
 import gurobipy as gp
 from gurobipy import GRB
@@ -15,9 +14,6 @@ NUM_AGENTS = 4
 LOG_LEVEL = "INFO"
 CONTROL_HORIZON = 25
 
-root_path = os.getcwd()
-sys.path.append(os.path.join(root_path, 'eicsymaware', 'src'))
-sys.path.append(os.path.join(root_path, 'tasmas', 'src'))
 
 from utils.functions import PRT, calculate_probabilities, calculate_risks, checkout_largest_in_dict
 from utils.draw import draw

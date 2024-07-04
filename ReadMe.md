@@ -33,8 +33,16 @@ This library considers a multi-bus routing scenario in a tourism attraction poin
 
 **Python Environment**
  - Python version: test passed on `python=3.11`
- - **Recommended**: IDE ([VS code](https://code.visualstudio.com/) or [Pycharm](https://www.jetbrains.com/pycharm/)) and [Conda](https://www.anaconda.com/)
- - Required Packages: `numpy`, `treelib`, `matplotlib`, `scipy`, `pybullet`. 
+ - Required Packages: 
+   - `gurobipy==11.0.2` (**license** required, see [How to Get a Gurobi License](https://www.gurobi.com/solutions/licensing/))
+   - `matplotlib==3.9.0`
+   - `numpy==1.26.4`
+   - `pybullet==3.2.6`
+   - `scipy==1.14.0`
+   - `treelib==1.7.0`
+   - `symaware-base==0.0.3`
+   - `symaware-pybullet==0.0.2`
+   - `control==0.10.0` (see [Documentation](https://python-control.readthedocs.io/en/latest/intro.html))
  
 **C/C++ Building Tool**
  - *Microsoft Visual C++* (14.0 or greater). Get it with [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/). In the installer, select the `C++ build tools` workload and ensure that the following components are checked:
@@ -42,64 +50,22 @@ This library considers a multi-bus routing scenario in a tourism attraction poin
     - Windows 10 SDK (Latest)
     - C++ CMake tools for Windows
 
- **Required Libraries**
- - `gurobipy` solver (**license** required, see [How to Get a Gurobi License](https://www.gurobi.com/solutions/licensing/))
- - `Python control` toolbox (see [Documentation](https://python-control.readthedocs.io/en/latest/intro.html))
  
 ### Configuring Python Environment
  
-1. Install conda following this [instruction](https://conda.io/projects/conda/en/latest/user-guide/install/index.html);
+1. Install the Python environment
+   ```
+   pip install -r requirements.txt --extra-index-url https://gitlab.mpi-sws.org/api/v4/projects/2668/packages/pypi/simple git+https://github.com/zhang-zengjie/tasmas.git
+   ```
 
-2. Open the conda shell, and create an independent project environment;
-```
-conda create --name tasmas-symaware python=3.11
-```
+2. Activate the `gurobi` license (See [How To](https://www.gurobi.com/documentation/current/remoteservices/licensing.html)). Note that this project is compatible with `gurobi` Released version `11.0.1`. Keep your `gurobi` updated in case of incompatibility. 
 
-3. In the same shell, activate the created environment
-```
-conda activate tasmas-symaware
-```
+3. Running instructions
 
-4. In the same shell, within the `tasmas` environment, install the dependencies one by one
- ```
-conda install -c anaconda numpy
-conda install -c conda-forge treelib
-conda install -c conda-forge matplotlib
-conda install -c anaconda scipy
-```
-
-5. In the same shell, within the `tasmas` environment, install the libraries
-```
-python -m pip install gurobipy
-pip install control
-pip install pybullet
-```
-
-6. Last but not least, activate the `gurobi` license (See [How To](https://www.gurobi.com/documentation/current/remoteservices/licensing.html)). Note that this project is compatible with `gurobi` Released version `11.0.1`. Keep your `gurobi` updated in case of incompatibility. 
-
-### Configure Git repositories
-
-1. Clone this repository:
-```
-git clone git@github.com:zhang-zengjie/tasmas-symaware-base.git
-```
-
-2. Clone the [tasmas](https://github.com/zhang-zengjie/tasmas) repository and the `eicsymaware` framework
-```
-cd tasmas-symaware-base
-git clone git@github.com:zhang-zengjie/tasmas.git
-```
-
-3. Download the [EICSymAware-base](https://gitlab.mpi-sws.org/sadegh/eicsymaware/-/archive/base/eicsymaware-base.zip) zip file. Unzip the file and place the folder `eicsymaware-base/src/symaware` under the `tasmas-symaware-base` directory.
-
-4. Download the [EICSymAware-pybullet](https://gitlab.mpi-sws.org/sadegh/eicsymaware/-/archive/pybullet/eicsymaware-pybullet.zip) zip file. Unzip the file and place the folder `eicsymaware-pybullet/src/symaware/simulators` under the `tasmas-symaware-base/symaware` directory.
-
-
-### Running Instructions
-
-- Run the main script `main.py`;
-- Watch the terminal for runtime information;
-- The pybullet simulation environment will prompt up automatically.
+   - Run the main script `src/main.py`;
+   - Watch the terminal for runtime information;
+   - The pybullet simulation environment will prompt up automatically;
+   - The figure will be generated in the end.
 
 ## License
 
