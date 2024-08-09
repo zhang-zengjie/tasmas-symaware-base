@@ -5,6 +5,7 @@ from gurobipy import GRB
 import logging
 from typing import TypeVar
 import time
+import pickle
 from scipy import interpolate as inter
 from scipy.spatial.transform import Rotation as R
 
@@ -12,12 +13,12 @@ T = TypeVar('T')
 TIME_INTERVAL = 0.01
 NUM_AGENTS = 4
 LOG_LEVEL = "INFO"
-CONTROL_HORIZON = 25
+CONTROL_HORIZON = 40
 
 
 from utils.functions import PRT, calculate_probabilities, calculate_risks, checkout_largest_in_dict
-from utils.draw import draw
-from utils.config import agent_model, agent_specs
+from draw import draw
+from config import agent_model, agent_specs
 from probstlpy.systems.linear import LinearSystem
 from probstlpy.solvers.gurobi.gurobi_micp import GurobiMICPSolver as MICPSolver
 
@@ -209,6 +210,9 @@ class TasMasCoordinator(AgentCoordinator[T]):
         for id, agent in enumerate(self._agents):
             measures[id] = agent.controllers[0].xx
             
+        with open('data.pkl', 'wb') as f:
+            pickle.dump(measures, f)
+
         return measures
 
     @log(__LOGGER)
@@ -284,7 +288,7 @@ class TasMasCoordinator(AgentCoordinator[T]):
 
                     print('Maximal horizon reached ... Drawing route map ...')
                     measures = self.record()
-                    draw(measures)
+                    # draw(measures)
                     print('Maximal horizon reached ... Standing by ...')
 
                 self._env.step()
@@ -537,8 +541,10 @@ def main():
     # 0. Parameters                                           #
     ###########################################################
 
-    initial_states = [[5, 5, 0.1], [15, 5, 0.1], [25, 5, 0.1], [35, 5, 0.1]]
-    control_bounds = [4, 5, 6, 7]
+    #initial_states = [[5, 5, 0.1], [15, 5, 0.1], [25, 5, 0.1], [35, 5, 0.1]]
+    #control_bounds = [4, 5, 6, 7]
+    initial_states = [[2.5, 7.5], [2.5, 12.5], [2.5, 22.5], [2.5, 27.5]]
+    control_bounds = [7, 7, 7, 7]
 
     initialize_logger(LOG_LEVEL)
 
